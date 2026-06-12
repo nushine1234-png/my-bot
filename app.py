@@ -152,18 +152,39 @@ def init_gsheet():
     try:
         import gspread
         from google.oauth2.service_account import Credentials
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds_json = get_secret("gcp_service_account", "{}")
-        if not creds_json or creds_json in ("{}", "your_service_account_json_here"):
-            st.error("❌ Google Sheets: GCP_SERVICE_ACCOUNT not found in secrets")
+
+        raw = get_secret("gcp_service_account", "")
+        if not raw or raw in ("{}", "your_service_account_json_here", ""):
+            st.error("❌ Google Sheets: GCP_SERVICE_ACCOUNT secret is missing or placeholder")
             return None
-        creds_dict = json.loads(creds_json) if isinstance(creds_json, str) else creds_json
+
+        if isinstance(raw, str):
+            try:
+                creds_dict = json.loads(raw)
+            except json.JSONDecodeError as e:
+                st.error(f"❌ Google Sheets: GCP_SERVICE_ACCOUNT is not valid JSON — {e}")
+                return None
+            if not isinstance(creds_dict, dict):
+                st.error(f"❌ Google Sheets: JSON parsed as {type(creds_dict).__name__}, expected dict")
+                return None
+        elif isinstance(raw, dict):
+            creds_dict = raw
+        elif isinstance(raw, list):
+            st.error("❌ Google Sheets: GCP_SERVICE_ACCOUNT is a list — in secrets, wrap with triple quotes '''{...}'''")
+            return None
+        else:
+            st.error(f"❌ Google Sheets: Unexpected type {type(raw).__name__} for GCP_SERVICE_ACCOUNT")
+            return None
+
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
+
         sheet_id = get_secret("gsheet_id", "")
         if not sheet_id:
             st.error("❌ Google Sheets: GSHEET_ID not found in secrets")
             return None
+
         sheet = client.open_by_key(sheet_id).sheet1
         if sheet.row_count == 0:
             sheet.append_row(["Timestamp", "Name", "Phone", "Concern", "Branch/Time", "Raw Message"])
