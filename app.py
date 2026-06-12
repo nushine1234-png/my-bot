@@ -217,9 +217,16 @@ def send_email_alert(lead_data):
     sender = get_secret("email_sender", "")
     password = get_secret("email_password", "")
     recipient = get_secret("email_recipient", "")
-    if not all([smtp_server, sender, password, recipient]):
-        st.warning("⚠️ Email not configured — missing SMTP credentials in secrets")
+
+    missing = []
+    if not smtp_server: missing.append("EMAIL_SMTP_SERVER")
+    if not sender: missing.append("EMAIL_SENDER")
+    if not password: missing.append("EMAIL_PASSWORD")
+    if not recipient: missing.append("EMAIL_RECIPIENT")
+    if missing:
+        st.warning(f"⚠️ Email not configured — secrets not found: {', '.join(missing)}")
         return False
+
     try:
         subject = f"🚨 New Lead - {lead_data['name'] or 'Unknown'}"
         body = (
@@ -235,12 +242,21 @@ def send_email_alert(lead_data):
         msg["Subject"] = subject
         msg["From"] = sender
         msg["To"] = recipient
+
+        st.info(f"📧 Connecting to {smtp_server}:{smtp_port} as {sender} → {recipient}")
         with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
+            server.set_debuglevel(1)
             server.starttls()
             server.login(sender, password)
             server.send_message(msg)
         st.success("✅ Email alert sent to clinic")
         return True
+    except smtplib.SMTPAuthenticationError:
+        st.error("❌ Email auth failed — use Gmail App Password (not regular password). Generate at https://myaccount.google.com/apppasswords")
+        return False
+    except smtplib.SMTPException as e:
+        st.error(f"❌ SMTP error: {e}")
+        return False
     except Exception as e:
         st.error(f"❌ Email send failed: {type(e).__name__}: {e}")
         return False
