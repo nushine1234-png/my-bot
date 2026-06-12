@@ -141,10 +141,12 @@ def send_webhook(payload):
         pass
 
 def get_secret(key, default=""):
-    try:
-        return st.secrets[key]
-    except (FileNotFoundError, KeyError):
-        return os.getenv(key, default)
+    for k in (key, key.upper(), key.lower()):
+        try:
+            return st.secrets[k]
+        except (FileNotFoundError, KeyError):
+            pass
+    return os.getenv(key, os.getenv(key.upper(), default))
 
 def init_gsheet():
     try:
@@ -152,19 +154,23 @@ def init_gsheet():
         from google.oauth2.service_account import Credentials
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds_json = get_secret("gcp_service_account", "{}")
-        if not creds_json or creds_json == "{}":
+        if not creds_json or creds_json in ("{}", "your_service_account_json_here"):
+            st.error("❌ Google Sheets: GCP_SERVICE_ACCOUNT not found in secrets")
             return None
         creds_dict = json.loads(creds_json) if isinstance(creds_json, str) else creds_json
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         sheet_id = get_secret("gsheet_id", "")
         if not sheet_id:
+            st.error("❌ Google Sheets: GSHEET_ID not found in secrets")
             return None
         sheet = client.open_by_key(sheet_id).sheet1
         if sheet.row_count == 0:
             sheet.append_row(["Timestamp", "Name", "Phone", "Concern", "Branch/Time", "Raw Message"])
+        st.success("✅ Google Sheets connected successfully")
         return sheet
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ Google Sheets init failed: {type(e).__name__}: {e}")
         return None
 
 def append_to_gsheet(sheet, lead_data):
@@ -180,7 +186,8 @@ def append_to_gsheet(sheet, lead_data):
             lead_data["raw_message"]
         ])
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ Google Sheets append failed: {type(e).__name__}: {e}")
         return False
 
 def send_email_alert(lead_data):
@@ -190,6 +197,7 @@ def send_email_alert(lead_data):
     password = get_secret("email_password", "")
     recipient = get_secret("email_recipient", "")
     if not all([smtp_server, sender, password, recipient]):
+        st.warning("⚠️ Email not configured — missing SMTP credentials in secrets")
         return False
     try:
         subject = f"🚨 New Lead - {lead_data['name'] or 'Unknown'}"
@@ -206,12 +214,14 @@ def send_email_alert(lead_data):
         msg["Subject"] = subject
         msg["From"] = sender
         msg["To"] = recipient
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=15) as server:
             server.starttls()
             server.login(sender, password)
             server.send_message(msg)
+        st.success("✅ Email alert sent to clinic")
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ Email send failed: {type(e).__name__}: {e}")
         return False
 
 if "gsheet" not in st.session_state:
