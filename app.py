@@ -212,7 +212,7 @@ def append_to_gsheet(sheet, lead_data):
         return False
 
 def send_email_alert(lead_data):
-    smtp_server = get_secret("email_smtp_server", "")
+    smtp_server = get_secret("email_smtp_server", "smtp.gmail.com")
     smtp_port = int(get_secret("email_smtp_port", "587"))
     sender = get_secret("email_sender", "")
     password = get_secret("email_password", "")
