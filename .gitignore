@@ -1,0 +1,6 @@
+.env
+patient_leads.csv
+__pycache__/
+*.pyc
+.DS_Store
+old_footer_template.txt
